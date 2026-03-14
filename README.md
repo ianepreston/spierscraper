@@ -68,12 +68,24 @@ filters:
   chinos:
     fits:
       - "Contemporary"
+      - "Relaxed Fit"
     sizes:
       - "33"
+      - "34"
 
   sport_coats:
     fits:
       - "Moro Cut (Regular)"
+      - "Neo Cut"
+    sizes:
+      - "40R"
+      - "40S"
+      - "40L"
+
+  suits:
+    fits:
+      - "Ellis Cut (Regular)"
+      - "Neo Cut"
     sizes:
       - "40R"
       - "40S"
@@ -81,8 +93,16 @@ filters:
   shirts:
     fits:
       - "Slim"
+      - "Contemporary"
     sizes:
       - "15.5/34"
+      - "16/34"
+
+  knitwear:
+    fits: []  # Knitwear doesn't use fit names
+    sizes:
+      - "M"
+      - "L"
 
 # Optional settings
 rate_limit_seconds: 1.5    # Delay between requests (default: 1.5)
@@ -92,20 +112,83 @@ cache_path: "/data/cache"  # Persistent cache location (default: in-memory)
 
 ### Available Categories
 
-- `pants` - Dress trousers
-- `chinos` - Casual chinos
-- `sport_coats` - Sport coats and blazers
-- `suits` - Full suits
-- `shirts` - Dress shirts
-- `knitwear` - Sweaters, cardigans
+| Category | Config Key | Description |
+|----------|------------|-------------|
+| Dress Trousers | `pants` | Wool dress trousers, flannel trousers |
+| Chinos | `chinos` | Cotton chinos and casual pants |
+| Jeans | `pants` | Denim jeans (categorized with pants) |
+| Sport Coats | `sport_coats` | Blazers and sport coats |
+| Suits | `suits` | Full suits (jacket + trousers) |
+| Dress Shirts | `shirts` | Dress and business casual shirts |
+| Knitwear | `knitwear` | Sweaters, cardigans, knit polos |
+| Outerwear | `outerwear` | Coats, jackets, vests |
 
-### Common Fits by Category
+### Valid Fits by Category
 
-| Category | Common Fits |
-|----------|-------------|
-| Pants/Chinos | Extra Slim, Slim, Contemporary |
-| Sport Coats | Moro Cut (Regular), Neo Cut, Relaxed Fit |
-| Shirts | Slim, Contemporary |
+#### Pants & Chinos
+
+| Category | Valid Fits |
+|----------|------------|
+| Dress Trousers | `Slim`, `Contemporary` |
+| Chinos | `Extra Slim`, `Slim`, `Contemporary`, `Relaxed Fit` |
+| Jeans | `Slim`, `Contemporary` |
+
+**Sizes:** `28`, `30`, `31`, `32`, `33`, `34`, `35`, `36`, `38`, `40`, `41`
+
+#### Suits
+
+| Valid Fits (Cuts) |
+|-------------------|
+| `Ellis Cut (Regular)` |
+| `Neo Cut` |
+| `Mayfair Cut` |
+| `Moro Cut` |
+| `Rivo Cut` |
+
+**Sizes:** `34`-`52` with suffixes: `R` (regular), `S` (short), `L` (long)
+- Regular: `34R`, `36R`, `38R`, `40R`, `42R`, `44R`, `46R`, `48R`, `50R`, `52R`
+- Short: `34S`, `36S`, `38S`, `40S`, `42S`, `44S`
+- Long: `38L`, `40L`, `42L`, `44L`, `46L`
+
+#### Sport Coats
+
+| Valid Fits (Cuts) |
+|-------------------|
+| `Moro Cut (Regular)` |
+| `Neo Cut` |
+| `Slim` |
+| `Contemporary` |
+| `Relaxed` |
+
+**Sizes:** `34`-`48` with suffixes: `R` (regular), `S` (short), `L` (long)
+- Regular: `34R`, `36R`, `38R`, `40R`, `42R`, `44R`, `46R`, `48R`
+- Short: `34S`, `36S`, `38S`, `40S`, `42S`
+- Long: `36L`, `38L`, `40L`, `42L`, `44L`
+
+#### Shirts
+
+| Valid Fits |
+|------------|
+| `Extra Slim` |
+| `Slim` |
+| `Contemporary` |
+| `Classic` |
+
+**Sizes:** Collar/sleeve format (e.g., `15.5/34`)
+- Collar: `14.5`, `15`, `15.5`, `16`, `16.5`, `17`, `17.5`, `18`
+- Sleeve: `32`, `33`, `34`, `35`, `36`, `37` (or combined: `32/33`, `34/35`, `36/37`)
+
+#### Knitwear
+
+Knitwear uses standard alpha sizing rather than fit names.
+
+**Sizes:** `XS`, `S`, `M`, `L`, `XL`, `XXL`
+
+#### Outerwear
+
+Outerwear uses standard alpha sizing rather than fit names.
+
+**Sizes:** `XS`, `S`, `M`, `L`, `XL`, `XXL` (varies by item)
 
 ---
 
