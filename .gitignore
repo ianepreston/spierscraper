@@ -42,3 +42,4 @@ config.yml
 # Environment
 .env
 .env.local
+.direnv
