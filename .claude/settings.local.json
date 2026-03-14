@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:www.spierandmackay.com)",
+      "Bash(nix flake check:*)",
+      "Bash(nix develop:*)"
+    ]
+  }
+}

@@ -1,0 +1,40 @@
+# Spier & Mackay Scraper Configuration
+#
+# Discord webhook URL can also be set via DISCORD_WEBHOOK_URL environment variable
+# discord_webhook_url: "https://discord.com/api/webhooks/..."
+
+# Filter configuration by garment category
+# Only categories with filters defined will be matched
+# If a category is omitted, items in that category are ignored
+filters:
+  pants:
+    fits:
+      - "Contemporary"
+      - "Slim"
+    sizes:
+      - "33"
+      - "34"
+
+  chinos:
+    fits:
+      - "Contemporary"
+    sizes:
+      - "33"
+
+  sport_coats:
+    fits:
+      - "Moro Cut (Regular)"
+    sizes:
+      - "40R"
+      - "40S"
+
+  # shirts:
+  #   fits:
+  #     - "Slim"
+  #   sizes:
+  #     - "15.5/34"
+
+# Optional settings
+# rate_limit_seconds: 1.5
+# cache_ttl_hours: 24
+# cache_path: "/path/to/cache"  # If omitted, uses in-memory cache
