@@ -41,6 +41,7 @@ async def run_scraper(config: Config, dry_run: bool = False) -> int:
         async with SpierMackayScraper(
             base_url=config.base_url,
             rate_limit=config.rate_limit_seconds,
+            config=config,
         ) as scraper:
             logger.info("Starting scrape...")
             products = await scraper.scrape_all()

@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import re
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 from urllib.parse import urljoin
@@ -11,8 +12,9 @@ import httpx
 from selectolax.parser import HTMLParser, Node
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from .config import CategoryFilter, Config
 from .filters import categorize_product
-from .models import Product, ProductVariant
+from .models import GarmentCategory, Product, ProductVariant
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +29,24 @@ USER_AGENTS = [
 ]
 
 
+@dataclass
+class ProductOption:
+    """An option (fit or size) with its internal IDs."""
+
+    name: str  # e.g., "Contemporary", "33"
+    option_id: str  # e.g., "883"
+    option_value_id: str  # e.g., "1532"
+
+
+@dataclass
+class ProductOptions:
+    """All options parsed from a product page."""
+
+    product_id: str
+    fits: list[ProductOption]
+    sizes: list[ProductOption]
+
+
 class SpierMackayScraper:
     """Scraper for Spier & Mackay clearance and odds/ends sections."""
 
@@ -34,9 +54,11 @@ class SpierMackayScraper:
         self,
         base_url: str = "https://www.spierandmackay.com",
         rate_limit: float = 1.5,
+        config: Config | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.rate_limit = rate_limit
+        self.config = config
         self._ua_index = 0
         self._client: httpx.AsyncClient | None = None
 
@@ -133,35 +155,57 @@ class SpierMackayScraper:
         while True:
             # The site uses a PHP backend with this endpoint pattern
             url = f"{self.base_url}/Category/collection_view/{collection_slug}"
-            params = {"page": page}
+            params = {"page_no": page}
+            # X-Requested-With header is required to get JSON response
+            headers = {"X-Requested-With": "XMLHttpRequest"}
 
             try:
-                response = await self._fetch(url, params=params)
+                response = await self._fetch(url, params=params, headers=headers)
                 data = response.json()
 
-                # Check if we got products
-                if not data.get("products"):
+                # Check if we got products (API returns HTML string in products field)
+                products_html = data.get("products", "")
+                if not products_html or not isinstance(products_html, str):
                     break
 
-                products.extend(data["products"])
-                logger.debug(f"Page {page}: {len(data['products'])} products")
-
-                # Check for more pages
-                if not data.get("has_more", False):
+                # Parse the HTML to extract product data
+                page_products = self._parse_products_html(products_html, collection_slug)
+                if not page_products:
                     break
 
-                page += 1
+                products.extend(page_products)
+                logger.debug(f"Page {page}: {len(page_products)} products")
+
+                # Check for more pages - API returns next page_no or we got fewer products
+                next_page = data.get("page_no")
+                if not next_page or next_page <= page:
+                    break
+
+                page = next_page
 
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 404:
                     break
                 raise
-            except Exception:
+            except Exception as e:
                 # Fall back to HTML scraping
-                logger.debug(f"API failed for {collection_slug}, trying HTML")
+                logger.debug(f"API failed for {collection_slug}: {e}, trying HTML")
                 return await self._fetch_collection_html(collection_slug)
 
         logger.info(f"Collection {collection_slug}: {len(products)} products total")
+        return products
+
+    def _parse_products_html(self, html: str, collection_slug: str) -> list[dict[str, Any]]:
+        """Parse product HTML returned by the collection API."""
+        tree = HTMLParser(html)
+        products: list[dict[str, Any]] = []
+
+        # Find product cards - site uses .item-product class
+        for card in tree.css(".item-product"):
+            product_data = self._parse_product_card(card, collection_slug)
+            if product_data:
+                products.append(product_data)
+
         return products
 
     async def _fetch_collection_html(self, collection_slug: str) -> list[dict[str, Any]]:
@@ -172,8 +216,8 @@ class SpierMackayScraper:
 
         products: list[dict[str, Any]] = []
 
-        # Find product cards
-        for card in tree.css(".product-card, .product-item, [data-product-id]"):
+        # Find product cards - site uses .item-product class
+        for card in tree.css(".item-product"):
             product_data = self._parse_product_card(card, collection_slug)
             if product_data:
                 products.append(product_data)
@@ -190,21 +234,21 @@ class SpierMackayScraper:
         href = link.attributes.get("href") or ""
         url = urljoin(self.base_url, str(href))
 
-        # Extract SKU from URL
+        # Extract SKU from URL (e.g., /product/cream-birdseye-dress-shirt-11081-c7f5k)
         sku_match = re.search(r"/product/[^/]+-([a-z0-9-]+)$", str(href), re.I)
-        sku = sku_match.group(1) if sku_match else ""
+        sku = sku_match.group(1).upper() if sku_match else ""
 
-        # Product name
-        name_el = card.css_first(".product-name, .product-title, h3, h4")
+        # Product name - site uses .prod-name
+        name_el = card.css_first(".prod-name")
         name = name_el.text(strip=True) if name_el else "Unknown"
 
-        # Price
-        price_el = card.css_first(".sale-price, .price, .product-price")
+        # Price - site uses .prod-price for sale price
+        price_el = card.css_first(".prod-price")
         price_text = price_el.text(strip=True) if price_el else "$0"
         price = self._parse_price(price_text)
 
-        # Original price
-        orig_el = card.css_first(".original-price, .was-price, .compare-price")
+        # Original price - site uses .prod-price1 for original/compare price
+        orig_el = card.css_first(".prod-price1")
         original_price = self._parse_price(orig_el.text(strip=True)) if orig_el else None
 
         return {
@@ -225,67 +269,142 @@ class SpierMackayScraper:
         except Exception:
             return Decimal("0")
 
-    async def fetch_product_details(self, product_url: str) -> dict[str, Any]:
-        """Fetch detailed product info including variants and stock."""
+    async def fetch_product_options(self, product_url: str) -> ProductOptions | None:
+        """Fetch product options (fit/size) with their internal IDs."""
         response = await self._fetch(product_url)
         tree = HTMLParser(response.text)
 
+        # Get product ID
+        product_id_el = tree.css_first("#filter_product_id")
+        if not product_id_el:
+            logger.warning(f"No product ID found for {product_url}")
+            return None
 
-        # Find variant options (fit/size selectors)
-        # The site typically has these as button groups or select elements
-        fits = self._extract_options(tree, "fit")
-        sizes = self._extract_options(tree, "size")
+        product_id = product_id_el.attributes.get("value", "")
+        if not product_id:
+            return None
 
-        # Extract SKU base
-        sku_el = tree.css_first("[data-sku], .sku, .product-sku")
-        base_sku = sku_el.text(strip=True) if sku_el else ""
+        # Parse options from #option_product_details (not the notify section)
+        option_details = tree.css_first("#option_product_details")
+        if not option_details:
+            logger.warning(f"No option details found for {product_url}")
+            return None
 
-        # For each combination, we need to check stock
-        # This will be done via API call
-        return {
-            "fits": fits,
-            "sizes": sizes,
-            "base_sku": base_sku,
-        }
+        fits, sizes = self._parse_option_groups(option_details)
 
-    def _extract_options(self, tree: HTMLParser, option_type: str) -> list[str]:
-        """Extract fit or size options from product page."""
-        options: list[str] = []
+        logger.debug(f"Product {product_id}: {len(fits)} fits, {len(sizes)} sizes")
+        return ProductOptions(product_id=product_id, fits=fits, sizes=sizes)
 
-        # Try various selectors
-        selectors = [
-            f"[data-option-name*='{option_type}' i] button",
-            f"[data-option-name*='{option_type}' i] .option",
-            f".{option_type}-options button",
-            f".{option_type}-selector option",
-            f"[class*='{option_type}'] button",
-        ]
+    def _parse_option_groups(
+        self, container: Node
+    ) -> tuple[list[ProductOption], list[ProductOption]]:
+        """Parse fit and size option groups from the container.
 
-        for selector in selectors:
-            for el in tree.css(selector):
-                text = el.text(strip=True)
-                if text and text not in options:
-                    options.append(text)
+        The site uses the same class (size1) for both fit and size options,
+        but they have different option_id values. We identify which is which
+        by looking at the section titles ("- Fit" vs "- Size").
+        """
+        fits: list[ProductOption] = []
+        sizes: list[ProductOption] = []
 
-            if options:
-                break
+        # Find all option groups (each has a title wrapper followed by options)
+        fit_option_id: str | None = None
+        size_option_id: str | None = None
 
-        return options
+        # First, identify which option_id corresponds to fit vs size
+        for title_div in container.css(".modal-title1"):
+            title_text = title_div.text(strip=True).lower()
 
-    async def fetch_stock_levels(self, sku: str) -> dict[str, int]:
-        """Fetch stock quantities for a SKU via API."""
+            # Find the next collar-options div
+            parent = title_div.parent
+            if parent:
+                grandparent = parent.parent
+                if grandparent:
+                    # Look for the next sibling with collar-options
+                    next_sibling = grandparent.next
+                    while next_sibling:
+                        if hasattr(next_sibling, "css"):
+                            options_div = next_sibling.css_first(".collar-options")
+                            if options_div:
+                                # Get the first option to find its option_id
+                                first_option = options_div.css_first("[option_id]")
+                                if first_option:
+                                    opt_id = first_option.attributes.get("option_id", "")
+                                    if "fit" in title_text:
+                                        fit_option_id = opt_id
+                                    elif "size" in title_text:
+                                        size_option_id = opt_id
+                                break
+                        next_sibling = next_sibling.next if hasattr(next_sibling, "next") else None
+
+        # Now parse all options and group by their option_id
+        seen_values: set[str] = set()
+        for el in container.css("[option_id][option_value_id]"):
+            option_id = el.attributes.get("option_id", "")
+            option_value_id = el.attributes.get("option_value_id", "")
+
+            if not option_id or not option_value_id:
+                continue
+
+            # Skip duplicates
+            if option_value_id in seen_values:
+                continue
+            seen_values.add(option_value_id)
+
+            # Get the text label from span child
+            span = el.css_first("span")
+            name = span.text(strip=True) if span else ""
+
+            if not name:
+                continue
+
+            opt = ProductOption(
+                name=name,
+                option_id=option_id,
+                option_value_id=option_value_id,
+            )
+
+            if option_id == fit_option_id:
+                fits.append(opt)
+            elif option_id == size_option_id:
+                sizes.append(opt)
+            else:
+                # If we couldn't determine type from titles, use heuristics
+                # Sizes are typically numeric or have number patterns
+                if name.isdigit() or re.match(r"^\d+[A-Z]?$", name) or "/" in name:
+                    sizes.append(opt)
+                else:
+                    fits.append(opt)
+
+        return fits, sizes
+
+    async def check_stock(
+        self, product_id: str, fit_value_id: str, size_value_id: str
+    ) -> int:
+        """Check stock for a specific fit/size combination.
+
+        Returns the quantity in stock (0 if out of stock).
+        """
         url = f"{self.base_url}/Product/get_sku_qty"
 
         try:
-            response = await self._post(url, data={"sku": sku})
+            sku_option = f"{fit_value_id},{size_value_id}"
+            response = await self._post(
+                url,
+                data={"sku_option": sku_option, "product_id": product_id},
+                headers={"X-Requested-With": "XMLHttpRequest"},
+            )
             data = response.json()
 
             if isinstance(data, dict):
-                return {k: int(v) for k, v in data.items() if str(v).isdigit()}
-        except Exception as e:
-            logger.warning(f"Failed to fetch stock for {sku}: {e}")
+                # wh_2 is the main warehouse stock
+                wh_2 = data.get("wh_2", 0)
+                return int(wh_2) if wh_2 else 0
 
-        return {}
+        except Exception as e:
+            logger.warning(f"Failed to check stock for {product_id}: {e}")
+
+        return 0
 
     async def scrape_all(self) -> list[Product]:
         """Main entry point: discover and scrape all clearance products."""
@@ -300,6 +419,7 @@ class SpierMackayScraper:
         for slug in collections:
             try:
                 raw_products = await self.fetch_collection_products(slug)
+                logger.info(f"Processing {len(raw_products)} products from {slug}")
 
                 for raw in raw_products:
                     product = await self._build_product(raw, slug)
@@ -313,39 +433,57 @@ class SpierMackayScraper:
         logger.info(f"Total products scraped: {len(all_products)}")
         return all_products
 
+    def _get_filter_for_category(self, category: GarmentCategory) -> CategoryFilter | None:
+        """Get filter config for a category, if one exists."""
+        if not self.config:
+            return None
+        return self.config.get_filter(category.value)
+
     async def _build_product(self, raw: dict[str, Any], collection: str) -> Product | None:
-        """Build a Product model from raw scraped data."""
+        """Build a Product model from raw scraped data.
+
+        Only fetches detailed stock info for products in categories we care about,
+        and only checks stock for fits/sizes in our config.
+        """
         try:
-            # Get category from name/collection
-            category = categorize_product(raw.get("name", ""), collection)
+            name = raw.get("name", "Unknown")
+            category = categorize_product(name, collection)
 
-            # Fetch variants and stock
+            # Check if we have a filter for this category
+            category_filter = self._get_filter_for_category(category)
+
+            # If no config or no filter for this category, skip fetching details
+            # but still return basic product info (might be useful for debugging)
+            if not category_filter:
+                logger.debug(f"Skipping {name}: no filter for {category.value}")
+                return Product(
+                    name=name,
+                    url=raw.get("url", ""),
+                    sku=raw.get("sku", ""),
+                    price=Decimal(str(raw.get("price", 0))),
+                    original_price=Decimal(str(raw["original_price"]))
+                    if raw.get("original_price")
+                    else None,
+                    category=category,
+                    collection=collection,
+                    variants=[],
+                )
+
+            # Fetch product options to get fit/size IDs
             variants: list[ProductVariant] = []
-            if raw.get("url"):
-                details = await self.fetch_product_details(raw["url"])
+            product_url = raw.get("url", "")
 
-                # Build variant combinations
-                for fit in details.get("fits", [""]) or [""]:
-                    for size in details.get("sizes", [""]) or [""]:
-                        variant_sku = f"{raw.get('sku', '')}-{fit}-{size}".strip("-")
+            if product_url:
+                options = await self.fetch_product_options(product_url)
 
-                        # Check stock
-                        stock_data = await self.fetch_stock_levels(variant_sku)
-                        qty = stock_data.get(variant_sku, 0)
-
-                        variants.append(
-                            ProductVariant(
-                                fit=fit or "Standard",
-                                size=size or "One Size",
-                                sku=variant_sku,
-                                in_stock=qty > 0,
-                                quantity=qty if qty > 0 else None,
-                            )
-                        )
+                if options:
+                    variants = await self._check_matching_variants(
+                        options, category_filter, raw.get("sku", "")
+                    )
 
             return Product(
-                name=raw.get("name", "Unknown"),
-                url=raw.get("url", ""),
+                name=name,
+                url=product_url,
                 sku=raw.get("sku", ""),
                 price=Decimal(str(raw.get("price", 0))),
                 original_price=Decimal(str(raw["original_price"]))
@@ -357,5 +495,67 @@ class SpierMackayScraper:
             )
 
         except Exception as e:
-            logger.warning(f"Failed to build product: {e}")
+            logger.warning(f"Failed to build product {raw.get('name', 'unknown')}: {e}")
             return None
+
+    async def _check_matching_variants(
+        self,
+        options: ProductOptions,
+        category_filter: CategoryFilter,
+        base_sku: str,
+    ) -> list[ProductVariant]:
+        """Check stock only for fit/size combinations that match our filter."""
+        variants: list[ProductVariant] = []
+
+        # Find fits that match our filter (or all if no fits specified)
+        matching_fits = []
+        if category_filter.fits:
+            for opt in options.fits:
+                if any(
+                    f.lower() in opt.name.lower() or opt.name.lower() in f.lower()
+                    for f in category_filter.fits
+                ):
+                    matching_fits.append(opt)
+        else:
+            # No fit filter = match all (e.g., knitwear)
+            matching_fits = options.fits if options.fits else [
+                ProductOption(name="Standard", option_id="", option_value_id="")
+            ]
+
+        # Find sizes that match our filter
+        matching_sizes = []
+        if category_filter.sizes:
+            for opt in options.sizes:
+                if opt.name in category_filter.sizes:
+                    matching_sizes.append(opt)
+        else:
+            matching_sizes = options.sizes
+
+        if not matching_sizes:
+            logger.debug("No matching sizes found for product")
+            return variants
+
+        # Check stock for each matching combination
+        for fit in matching_fits:
+            for size in matching_sizes:
+                # Handle products without fit options
+                if fit.option_value_id and size.option_value_id:
+                    qty = await self.check_stock(
+                        options.product_id, fit.option_value_id, size.option_value_id
+                    )
+                else:
+                    # For products with only size (no fit), check with just size
+                    qty = 0  # Skip for now, would need different API call
+
+                variant_sku = f"{base_sku}-{fit.name}-{size.name}".strip("-")
+                variants.append(
+                    ProductVariant(
+                        fit=fit.name,
+                        size=size.name,
+                        sku=variant_sku,
+                        in_stock=qty > 0,
+                        quantity=qty if qty > 0 else None,
+                    )
+                )
+
+        return variants

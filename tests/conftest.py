@@ -20,27 +20,68 @@ def sample_config() -> Config:
 
 @pytest.fixture
 def sample_products_html() -> str:
-    """Sample HTML for product listing."""
+    """Sample HTML for product listing - matches actual site structure."""
     return """
     <html>
     <body>
-        <div class="product-card" data-product-id="123">
+        <div class="col-md-3 col-sm-4 col-xs-6 item-product">
             <a href="/product/brown-chino-ry-3038-chn-01-ss22">
-                <h3 class="product-name">Brown Chino</h3>
+                <div class="product-block">
+                    <div class="product-info">
+                        <div class="prod-name">Brown Chino</div>
+                        <div class="prod-price">$24.99 CAD</div>
+                        <div class="prod-price1">$68.00 CAD</div>
+                    </div>
+                </div>
             </a>
-            <span class="sale-price">$24.99</span>
-            <span class="original-price">$68.00</span>
         </div>
-        <div class="product-card" data-product-id="456">
+        <div class="col-md-3 col-sm-4 col-xs-6 item-product">
             <a href="/product/navy-trousers-abc-123">
-                <h3 class="product-name">Navy Trousers</h3>
+                <div class="product-block">
+                    <div class="product-info">
+                        <div class="prod-name">Navy Trousers</div>
+                        <div class="prod-price">$49.99 CAD</div>
+                        <div class="prod-price1">$120.00 CAD</div>
+                    </div>
+                </div>
             </a>
-            <span class="sale-price">$49.99</span>
-            <span class="original-price">$120.00</span>
         </div>
     </body>
     </html>
     """
+
+
+@pytest.fixture
+def sample_api_response() -> dict:
+    """Sample JSON response from the collection API."""
+    return {
+        "status": True,
+        "products": """
+            <div class="col-md-3 col-sm-4 col-xs-6 item-product">
+                <a href="/product/cream-birdseye-dress-shirt-11081-c7f5k">
+                    <div class="product-block">
+                        <div class="product-info">
+                            <div class="prod-name">Cream Birdseye Dress Shirt - Final Sale</div>
+                            <div class="prod-price">$24.99 CAD</div>
+                            <div class="prod-price1">$68.00 CAD</div>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-md-3 col-sm-4 col-xs-6 item-product">
+                <a href="/product/navy-stripe-trousers-ry-3456-tr-01">
+                    <div class="product-block">
+                        <div class="product-info">
+                            <div class="prod-name">Navy Stripe Trousers</div>
+                            <div class="prod-price">$49.99 CAD</div>
+                            <div class="prod-price1">$148.00 CAD</div>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        """,
+        "page_no": 2,
+    }
 
 
 @pytest.fixture
