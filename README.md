@@ -1,13 +1,17 @@
 # Spier & Mackay Scraper
 
-A scraper that monitors [Spier & Mackay](https://www.spierandmackay.com/) clearance and odds-and-ends sections for in-stock items matching your size and fit preferences, with Discord webhook notifications.
+A scraper that monitors [Spier & Mackay](https://www.spierandmackay.com/)
+clearance and odds-and-ends sections for in-stock items matching your size and
+fit preferences, with Discord webhook notifications.
 
 ## Features
 
 - **Auto-discovery**: Automatically finds all clearance and sale collections
-- **Category-aware filtering**: Separate fit/size preferences for pants, sport coats, shirts, etc.
+- **Category-aware filtering**: Separate fit/size preferences for pants, sport
+  coats, shirts, etc.
 - **Change detection**: Only notifies about new items (configurable 24h TTL)
-- **Discord notifications**: Rich embeds with price, discount %, and available sizes
+- **Discord notifications**: Rich embeds with price, discount %, and available
+  sizes
 - **Rate limiting**: Respectful scraping with configurable delays
 - **Container-ready**: Nix-built Docker image for Kubernetes deployment
 
@@ -42,14 +46,15 @@ make docker
 
 ## Configuration
 
-The scraper uses a YAML config file for filter preferences and environment variables for secrets.
+The scraper uses a YAML config file for filter preferences and environment
+variables for secrets.
 
 ### Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `DISCORD_WEBHOOK_URL` | Yes | Discord webhook URL for notifications |
-| `SPIERSCRAPER_CACHE_PATH` | No | Path for persistent cache (enables change detection across restarts) |
+| Variable                  | Required | Description                                                          |
+| ------------------------- | -------- | -------------------------------------------------------------------- |
+| `DISCORD_WEBHOOK_URL`     | Yes      | Discord webhook URL for notifications                                |
+| `SPIERSCRAPER_CACHE_PATH` | No       | Path for persistent cache (enables change detection across restarts) |
 
 ### Config File (config.yaml)
 
@@ -99,84 +104,88 @@ filters:
       - "16/34"
 
   knitwear:
-    fits: []  # Knitwear doesn't use fit names
+    fits: [] # Knitwear doesn't use fit names
     sizes:
       - "M"
       - "L"
 
 # Optional settings
-rate_limit_seconds: 1.5    # Delay between requests (default: 1.5)
-cache_ttl_hours: 24        # How long to remember seen items (default: 24)
-cache_path: "/data/cache"  # Persistent cache location (default: in-memory)
+rate_limit_seconds: 1.5 # Delay between requests (default: 1.5)
+cache_ttl_hours: 24 # How long to remember seen items (default: 24)
+cache_path: "/data/cache" # Persistent cache location (default: in-memory)
 ```
 
 ### Available Categories
 
-| Category | Config Key | Description |
-|----------|------------|-------------|
-| Dress Trousers | `pants` | Wool dress trousers, flannel trousers |
-| Chinos | `chinos` | Cotton chinos and casual pants |
-| Jeans | `pants` | Denim jeans (categorized with pants) |
-| Sport Coats | `sport_coats` | Blazers and sport coats |
-| Suits | `suits` | Full suits (jacket + trousers) |
-| Dress Shirts | `shirts` | Dress and business casual shirts |
-| Knitwear | `knitwear` | Sweaters, cardigans, knit polos |
-| Outerwear | `outerwear` | Coats, jackets, vests |
+| Category       | Config Key    | Description                           |
+| -------------- | ------------- | ------------------------------------- |
+| Dress Trousers | `pants`       | Wool dress trousers, flannel trousers |
+| Chinos         | `chinos`      | Cotton chinos and casual pants        |
+| Jeans          | `pants`       | Denim jeans (categorized with pants)  |
+| Sport Coats    | `sport_coats` | Blazers and sport coats               |
+| Suits          | `suits`       | Full suits (jacket + trousers)        |
+| Dress Shirts   | `shirts`      | Dress and business casual shirts      |
+| Knitwear       | `knitwear`    | Sweaters, cardigans, knit polos       |
+| Outerwear      | `outerwear`   | Coats, jackets, vests                 |
 
 ### Valid Fits by Category
 
 #### Pants & Chinos
 
-| Category | Valid Fits |
-|----------|------------|
-| Dress Trousers | `Slim`, `Contemporary` |
-| Chinos | `Extra Slim`, `Slim`, `Contemporary`, `Relaxed Fit` |
-| Jeans | `Slim`, `Contemporary` |
+| Category       | Valid Fits                                          |
+| -------------- | --------------------------------------------------- |
+| Dress Trousers | `Slim`, `Contemporary`                              |
+| Chinos         | `Extra Slim`, `Slim`, `Contemporary`, `Relaxed Fit` |
+| Jeans          | `Slim`, `Contemporary`                              |
 
 **Sizes:** `28`, `30`, `31`, `32`, `33`, `34`, `35`, `36`, `38`, `40`, `41`
 
 #### Suits
 
-| Valid Fits (Cuts) |
-|-------------------|
+| Valid Fits (Cuts)     |
+| --------------------- |
 | `Ellis Cut (Regular)` |
-| `Neo Cut` |
-| `Mayfair Cut` |
-| `Moro Cut` |
-| `Rivo Cut` |
+| `Neo Cut`             |
+| `Mayfair Cut`         |
+| `Moro Cut`            |
+| `Rivo Cut`            |
 
 **Sizes:** `34`-`52` with suffixes: `R` (regular), `S` (short), `L` (long)
+
 - Regular: `34R`, `36R`, `38R`, `40R`, `42R`, `44R`, `46R`, `48R`, `50R`, `52R`
 - Short: `34S`, `36S`, `38S`, `40S`, `42S`, `44S`
 - Long: `38L`, `40L`, `42L`, `44L`, `46L`
 
 #### Sport Coats
 
-| Valid Fits (Cuts) |
-|-------------------|
+| Valid Fits (Cuts)    |
+| -------------------- |
 | `Moro Cut (Regular)` |
-| `Neo Cut` |
-| `Slim` |
-| `Contemporary` |
-| `Relaxed` |
+| `Neo Cut`            |
+| `Slim`               |
+| `Contemporary`       |
+| `Relaxed`            |
 
 **Sizes:** `34`-`48` with suffixes: `R` (regular), `S` (short), `L` (long)
+
 - Regular: `34R`, `36R`, `38R`, `40R`, `42R`, `44R`, `46R`, `48R`
 - Short: `34S`, `36S`, `38S`, `40S`, `42S`
 - Long: `36L`, `38L`, `40L`, `42L`, `44L`
 
 #### Shirts
 
-| Valid Fits |
-|------------|
-| `Extra Slim` |
-| `Slim` |
+| Valid Fits     |
+| -------------- |
+| `Extra Slim`   |
+| `Slim`         |
 | `Contemporary` |
-| `Classic` |
+| `Classic`      |
 
 **Sizes:** Collar/sleeve format (e.g., `15.5/34`)
+
 - Collar: `14.5`, `15`, `15.5`, `16`, `16.5`, `17`, `17.5`, `18`
-- Sleeve: `32`, `33`, `34`, `35`, `36`, `37` (or combined: `32/33`, `34/35`, `36/37`)
+- Sleeve: `32`, `33`, `34`, `35`, `36`, `37` (or combined: `32/33`, `34/35`,
+  `36/37`)
 
 #### Knitwear
 
@@ -210,9 +219,8 @@ services:
       - ./config.yaml:/config.yaml:ro
       # Optional: persistent cache for change detection
       - scraper-cache:/data/cache
-    # Run on a schedule using restart policy + sleep, or use external scheduler
-    command: ["/bin/sh", "-c", "spierscraper -c /config.yaml && sleep 3600"]
-    restart: always
+    command: ["-c", "/config.yaml"]
+    # For scheduled runs, see the ofelia example below
 
 volumes:
   scraper-cache:
@@ -231,7 +239,8 @@ Run with:
 docker-compose up -d
 ```
 
-For scheduled runs, you can use a separate scheduler container or cron on the host:
+For scheduled runs, you can use a separate scheduler container or cron on the
+host:
 
 ```yaml
 # docker-compose.yaml with ofelia scheduler
@@ -255,8 +264,8 @@ services:
     volumes:
       - ./config.yaml:/config.yaml:ro
       - scraper-cache:/data/cache
-    command: ["spierscraper", "-c", "/config.yaml"]
-    restart: "no"  # Scheduler handles restarts
+    command: ["-c", "/config.yaml"]
+    restart: "no" # Scheduler handles restarts
 
 volumes:
   scraper-cache:
@@ -326,7 +335,7 @@ metadata:
   name: spierscraper
   namespace: default
 spec:
-  schedule: "0 */2 * * *"  # Every 2 hours
+  schedule: "0 */2 * * *" # Every 2 hours
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -338,8 +347,8 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: spierscraper
-              image: ghcr.io/your-username/spierscraper:latest
-              args: ["-c", "/config/config.yaml"]
+              image: ghcr.io/ianepreston/spierscraper:latest
+              args: ["--config", "/config/config.yaml"]
               env:
                 - name: DISCORD_WEBHOOK_URL
                   valueFrom:

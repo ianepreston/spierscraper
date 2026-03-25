@@ -63,7 +63,7 @@
           ];
 
           config = {
-            Cmd = [ "${spierscraper}/bin/spierscraper" ];
+            Entrypoint = [ "${spierscraper}/bin/spierscraper" ];
             Env = [
               "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
             ];
