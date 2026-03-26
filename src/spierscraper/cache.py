@@ -88,9 +88,7 @@ class MatchCache:
     def cleanup(self) -> None:
         """Remove expired entries from memory cache."""
         now = time.time()
-        expired_keys = [
-            k for k, v in self._cache.items() if now - v >= self.ttl_seconds
-        ]
+        expired_keys = [k for k, v in self._cache.items() if now - v >= self.ttl_seconds]
         for k in expired_keys:
             del self._cache[k]
 

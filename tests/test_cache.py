@@ -65,9 +65,7 @@ class TestMatchCache:
                 category=GarmentCategory.PANTS,
                 collection="clearance",
                 variants=[
-                    ProductVariant(
-                        fit="Slim", size="33", sku=f"SKU-{i}-S-33", in_stock=True
-                    ),
+                    ProductVariant(fit="Slim", size="33", sku=f"SKU-{i}-S-33", in_stock=True),
                 ],
             )
             matches.append(ProductMatch(product=product, matching_variants=product.variants))

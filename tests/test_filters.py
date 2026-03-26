@@ -36,9 +36,7 @@ class TestMatchesFilter:
     """Tests for variant matching logic."""
 
     def test_matches_with_fit_and_size(self):
-        variant = ProductVariant(
-            fit="Contemporary", size="33", sku="test-123", in_stock=True
-        )
+        variant = ProductVariant(fit="Contemporary", size="33", sku="test-123", in_stock=True)
         assert matches_filter(variant, ["Contemporary"], ["33"]) is True
         assert matches_filter(variant, ["Slim"], ["33"]) is False
         assert matches_filter(variant, ["Contemporary"], ["34"]) is False
@@ -52,9 +50,7 @@ class TestMatchesFilter:
         assert matches_filter(variant, ["Moro Cut"], ["40R"]) is True
 
     def test_empty_filter_matches_all(self):
-        variant = ProductVariant(
-            fit="Any Fit", size="Any Size", sku="test-123", in_stock=True
-        )
+        variant = ProductVariant(fit="Any Fit", size="Any Size", sku="test-123", in_stock=True)
         assert matches_filter(variant, [], []) is True
         assert matches_filter(variant, ["Any Fit"], []) is True
         assert matches_filter(variant, [], ["Any Size"]) is True
@@ -86,9 +82,7 @@ class TestFilterProducts:
                 category=GarmentCategory.SHIRTS,
                 collection="clearance",
                 variants=[
-                    ProductVariant(
-                        fit="Slim", size="15", sku="SHT-456-S-15", in_stock=True
-                    ),
+                    ProductVariant(fit="Slim", size="15", sku="SHT-456-S-15", in_stock=True),
                 ],
             ),
         ]
@@ -136,9 +130,7 @@ class TestFilterProducts:
                 category=GarmentCategory.CHINOS,
                 collection="clearance",
                 variants=[
-                    ProductVariant(
-                        fit="Extra Slim", size="30", sku="CHN-123-ES-30", in_stock=True
-                    ),
+                    ProductVariant(fit="Extra Slim", size="30", sku="CHN-123-ES-30", in_stock=True),
                 ],
             ),
         ]

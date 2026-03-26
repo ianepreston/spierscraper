@@ -24,6 +24,33 @@ def setup_logging(verbose: bool = False) -> None:
     )
 
 
+async def run_discover(config: Config) -> int:
+    """Discover all available options from the site."""
+    logger = logging.getLogger(__name__)
+
+    try:
+        async with SpierMackayScraper(
+            base_url=config.base_url,
+            rate_limit=config.rate_limit_seconds,
+        ) as scraper:
+            logger.info("Discovering available options...")
+            discovered = await scraper.discover_available_options()
+
+        if not discovered.filters:
+            logger.warning("No options discovered")
+            return 1
+
+        # Print as YAML for easy copy-paste into config
+        print("\n# Discovered options (copy relevant sections to your config.yaml):\n")
+        print(discovered.to_yaml())
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Discovery failed: {e}")
+        return 1
+
+
 async def run_scraper(config: Config, dry_run: bool = False) -> int:
     """Run the scraper and send notifications."""
     logger = logging.getLogger(__name__)
@@ -111,12 +138,14 @@ def main() -> None:
         description="Scrape Spier & Mackay for clearance items matching your criteria"
     )
     parser.add_argument(
-        "-c", "--config",
+        "-c",
+        "--config",
         type=Path,
         help="Path to config file (default: config.yaml)",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Enable verbose logging",
     )
@@ -130,6 +159,11 @@ def main() -> None:
         action="store_true",
         help="Alias for running against live site (default behavior)",
     )
+    parser.add_argument(
+        "--discover",
+        action="store_true",
+        help="Discover all available category/fit/size options from the site",
+    )
 
     args = parser.parse_args()
 
@@ -142,12 +176,15 @@ def main() -> None:
         print(f"Failed to load config: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Check for filters
-    if not config.filters:
-        print("Warning: No filters configured. Will match nothing.", file=sys.stderr)
+    # Run discovery or normal scrape
+    if args.discover:
+        exit_code = asyncio.run(run_discover(config))
+    else:
+        # Check for filters
+        if not config.filters:
+            print("Warning: No filters configured. Will match nothing.", file=sys.stderr)
+        exit_code = asyncio.run(run_scraper(config, args.dry_run))
 
-    # Run
-    exit_code = asyncio.run(run_scraper(config, args.dry_run))
     sys.exit(exit_code)
 
 

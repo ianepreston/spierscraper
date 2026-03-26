@@ -7,11 +7,44 @@ import respx
 from httpx import Response
 from selectolax.parser import HTMLParser
 
+from spierscraper.models import CategoryOptions, DiscoveredOptions
 from spierscraper.scraper import SpierMackayScraper
 
 
 class TestSpierMackayScraper:
     """Tests for SpierMackayScraper."""
+
+    def test_sort_sizes(self):
+        """Test that sizes are sorted in sensible order."""
+        scraper = SpierMackayScraper()
+
+        # Pure numeric sizes
+        assert scraper._sort_sizes(["34", "32", "33", "30"]) == ["30", "32", "33", "34"]
+
+        # Numeric with suffix (jacket sizes)
+        assert scraper._sort_sizes(["40R", "38S", "40S", "38R"]) == [
+            "38R",
+            "38S",
+            "40R",
+            "40S",
+        ]
+
+        # Shirt sizes with fractions
+        assert scraper._sort_sizes(["16/34", "15.5/34", "15/33"]) == [
+            "15/33",
+            "15.5/34",
+            "16/34",
+        ]
+
+        # Letter sizes
+        assert scraper._sort_sizes(["XL", "S", "M", "L"]) == ["S", "M", "L", "XL"]
+
+        # Mixed types
+        sizes = ["40R", "M", "33", "XL"]
+        sorted_sizes = scraper._sort_sizes(sizes)
+        # Numeric first, then numeric with suffix, then letter sizes
+        assert sorted_sizes[0] == "33"
+        assert sorted_sizes[-1] == "XL"
 
     def test_parse_price(self):
         scraper = SpierMackayScraper()
@@ -237,3 +270,41 @@ class TestCollectionAPI:
         assert "page_no=2" in str(route.calls[1].request.url)
         # Should have parsed 1 product from page 1
         assert len(products) == 1
+
+
+class TestDiscoveredOptions:
+    """Tests for DiscoveredOptions model."""
+
+    def test_to_yaml_format(self):
+        """Test that YAML output matches config.yaml format."""
+        discovered = DiscoveredOptions(
+            filters={
+                "pants": CategoryOptions(
+                    fits=["Contemporary", "Slim"],
+                    sizes=["32", "33", "34"],
+                ),
+                "chinos": CategoryOptions(
+                    fits=["Contemporary"],
+                    sizes=["33"],
+                ),
+            }
+        )
+
+        yaml_output = discovered.to_yaml()
+
+        # Should be valid YAML that matches config format
+        assert "filters:" in yaml_output
+        assert "pants:" in yaml_output
+        assert "chinos:" in yaml_output
+        assert "fits:" in yaml_output
+        assert "sizes:" in yaml_output
+        assert "- Contemporary" in yaml_output
+        assert "- '33'" in yaml_output or "- 33" in yaml_output
+
+    def test_empty_discovered_options(self):
+        """Test that empty options produce valid output."""
+        discovered = DiscoveredOptions()
+
+        yaml_output = discovered.to_yaml()
+
+        assert "filters:" in yaml_output

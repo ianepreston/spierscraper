@@ -6,7 +6,8 @@
       "Bash(nix develop:*)",
       "Bash(python:*)",
       "Bash(curl:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(make check:*)"
     ]
   }
 }

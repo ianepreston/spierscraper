@@ -66,3 +66,31 @@ class ProductMatch(BaseModel):
         """Whether this match is new (not seen before)."""
         # Set by cache comparison
         return getattr(self, "_is_new", True)
+
+
+class CategoryOptions(BaseModel):
+    """Available fits and sizes for a category."""
+
+    fits: list[str] = Field(default_factory=list)
+    sizes: list[str] = Field(default_factory=list)
+
+
+class DiscoveredOptions(BaseModel):
+    """All discovered category/fit/size combinations from the site.
+
+    Structured to match the config.yaml filters format.
+    """
+
+    filters: dict[str, CategoryOptions] = Field(default_factory=dict)
+
+    def to_yaml(self) -> str:
+        """Export as YAML string matching config format."""
+        import yaml
+
+        data = {
+            "filters": {
+                category: {"fits": opts.fits, "sizes": opts.sizes}
+                for category, opts in sorted(self.filters.items())
+            }
+        }
+        return yaml.dump(data, default_flow_style=False, sort_keys=False)

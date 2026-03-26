@@ -14,7 +14,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from .config import CategoryFilter, Config
 from .filters import categorize_product
-from .models import GarmentCategory, Product, ProductVariant
+from .models import DiscoveredOptions, GarmentCategory, Product, ProductVariant
 
 logger = logging.getLogger(__name__)
 
@@ -378,9 +378,7 @@ class SpierMackayScraper:
 
         return fits, sizes
 
-    async def check_stock(
-        self, product_id: str, fit_value_id: str, size_value_id: str
-    ) -> int:
+    async def check_stock(self, product_id: str, fit_value_id: str, size_value_id: str) -> int:
         """Check stock for a specific fit/size combination.
 
         Returns the quantity in stock (0 if out of stock).
@@ -518,9 +516,11 @@ class SpierMackayScraper:
                     matching_fits.append(opt)
         else:
             # No fit filter = match all (e.g., knitwear)
-            matching_fits = options.fits if options.fits else [
-                ProductOption(name="Standard", option_id="", option_value_id="")
-            ]
+            matching_fits = (
+                options.fits
+                if options.fits
+                else [ProductOption(name="Standard", option_id="", option_value_id="")]
+            )
 
         # Find sizes that match our filter
         matching_sizes = []
@@ -559,3 +559,106 @@ class SpierMackayScraper:
                 )
 
         return variants
+
+    async def discover_available_options(self) -> DiscoveredOptions:
+        """Discover all available category/fit/size combinations from the site.
+
+        This scrapes all clearance products and aggregates the available options
+        without checking stock. Useful for understanding what the site offers
+        and validating your config.yaml filters.
+
+        Returns:
+            DiscoveredOptions with all categories, fits, and sizes found.
+        """
+        from collections import defaultdict
+
+        from .models import CategoryOptions
+
+        logger.info("Discovering available options...")
+
+        # Track unique fits and sizes per category
+        category_fits: dict[str, set[str]] = defaultdict(set)
+        category_sizes: dict[str, set[str]] = defaultdict(set)
+
+        collections = await self.discover_clearance_collections()
+
+        if not collections:
+            logger.warning("No clearance collections found")
+            return DiscoveredOptions()
+
+        for slug in collections:
+            try:
+                raw_products = await self.fetch_collection_products(slug)
+                logger.info(f"Discovering options from {len(raw_products)} products in {slug}")
+
+                for raw in raw_products:
+                    name = raw.get("name", "Unknown")
+                    category = categorize_product(name, slug)
+                    product_url = raw.get("url", "")
+
+                    if not product_url:
+                        continue
+
+                    # Fetch options for this product
+                    try:
+                        options = await self.fetch_product_options(product_url)
+                        if options:
+                            for fit in options.fits:
+                                category_fits[category.value].add(fit.name)
+                            for size in options.sizes:
+                                category_sizes[category.value].add(size.name)
+                    except Exception as e:
+                        logger.debug(f"Failed to fetch options for {name}: {e}")
+                        continue
+
+            except Exception as e:
+                logger.error(f"Failed to process collection {slug}: {e}")
+                continue
+
+        # Build the result
+        result = DiscoveredOptions()
+        all_categories = set(category_fits.keys()) | set(category_sizes.keys())
+
+        for cat_name in sorted(all_categories):
+            fits = sorted(category_fits.get(cat_name, set()))
+            sizes = self._sort_sizes(list(category_sizes.get(cat_name, set())))
+            result.filters[cat_name] = CategoryOptions(fits=fits, sizes=sizes)
+
+        logger.info(f"Discovered options for {len(result.filters)} categories")
+        return result
+
+    def _sort_sizes(self, sizes: list[str]) -> list[str]:
+        """Sort sizes in a sensible order (numeric first, then alphanumeric)."""
+
+        def size_key(s: str) -> tuple[int, float | str, str]:
+            # Try to extract numeric part for sorting
+            import re
+
+            # Pure numeric (e.g., "33", "34")
+            if s.isdigit():
+                return (0, float(s), s)
+
+            # Numeric with suffix (e.g., "40R", "40S", "40L")
+            match = re.match(r"^(\d+)([A-Z]*)$", s)
+            if match:
+                num, suffix = match.groups()
+                return (1, float(num), suffix)
+
+            # Fraction format (e.g., "15.5/34")
+            if "/" in s:
+                parts = s.split("/")
+                try:
+                    return (2, float(parts[0]), s)
+                except ValueError:
+                    pass
+
+            # Alphabetic sizes (XS, S, M, L, XL, etc.)
+            size_order = {"xxs": 0, "xs": 1, "s": 2, "m": 3, "l": 4, "xl": 5, "xxl": 6}
+            lower = s.lower()
+            if lower in size_order:
+                return (3, size_order[lower], s)
+
+            # Fallback: alphabetic
+            return (4, 0, s)
+
+        return sorted(sizes, key=size_key)
