@@ -25,6 +25,8 @@ DISCORD_WEBHOOK_URL="..." python -m spierscraper  # real run
 
 # Build Docker image
 make docker                  # nix build .#docker && docker load
+make docker-release          # build + tag with CalVer (YYYY.MM.DD.N)
+make docker-release REGISTRY=ghcr.io/user  # also push to registry
 ```
 
 ## Architecture

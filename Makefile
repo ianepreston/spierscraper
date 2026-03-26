@@ -1,4 +1,4 @@
-.PHONY: dev test lint type-check check run live-test clean docker
+.PHONY: dev test lint type-check check run live-test clean docker docker-release
 
 # Development
 dev:
@@ -37,6 +37,33 @@ check: lint type-check test
 docker:
 	nix build .#docker
 	docker load < result
+
+# Docker with CalVer tagging (YYYY.MM.DD.N format)
+# Usage: make docker-release [REGISTRY=ghcr.io/username]
+REGISTRY ?=
+DATE := $(shell date +%Y.%m.%d)
+
+docker-release:
+	nix build .#docker
+	docker load < result
+	$(eval VERSION := $(shell \
+		existing=$$(docker images --format '{{.Tag}}' spierscraper 2>/dev/null | grep '^$(DATE)\.' | sort -t. -k4 -n | tail -1); \
+		if [ -z "$$existing" ]; then \
+			echo "$(DATE).1"; \
+		else \
+			n=$$(echo "$$existing" | cut -d. -f4); \
+			echo "$(DATE).$$((n + 1))"; \
+		fi \
+	))
+	docker tag spierscraper:latest spierscraper:$(VERSION)
+	@echo "Tagged spierscraper:$(VERSION)"
+ifdef REGISTRY
+	docker tag spierscraper:$(VERSION) $(REGISTRY)/spierscraper:$(VERSION)
+	docker tag spierscraper:$(VERSION) $(REGISTRY)/spierscraper:latest
+	docker push $(REGISTRY)/spierscraper:$(VERSION)
+	docker push $(REGISTRY)/spierscraper:latest
+	@echo "Pushed $(REGISTRY)/spierscraper:$(VERSION)"
+endif
 
 # Cleanup
 clean:
