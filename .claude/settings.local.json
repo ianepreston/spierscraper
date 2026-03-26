@@ -7,7 +7,9 @@
       "Bash(python:*)",
       "Bash(curl:*)",
       "WebSearch",
-      "Bash(make check:*)"
+      "Bash(make check:*)",
+      "Bash(make lint:*)",
+      "Bash(make test:*)"
     ]
   }
 }
