@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 
-from .models import ProductMatch
+from .models import DiscoveredOptions, ProductMatch
 
 logger = logging.getLogger(__name__)
 
@@ -141,4 +141,51 @@ class DiscordNotifier:
                 return True
         except Exception as e:
             logger.error(f"Failed to send error notification: {e}")
+            return False
+
+    async def send_discovered_options(self, discovered: DiscoveredOptions) -> bool:
+        """Send discovered category/fit/size options to Discord.
+
+        This sends a summary of all available options found on the site,
+        formatted as YAML for easy copying to config.
+        """
+        if not self.webhook_url:
+            logger.warning("No Discord webhook URL configured")
+            return False
+
+        if not discovered.filters:
+            logger.info("No discovered options to send")
+            return True
+
+        # Format as YAML in a code block
+        yaml_content = discovered.to_yaml()
+
+        # Discord message limit is 2000 chars, code block adds ~10 chars
+        max_content = 1900
+        if len(yaml_content) > max_content:
+            yaml_content = yaml_content[:max_content] + "\n# ... (truncated)"
+
+        payload = {
+            "content": (
+                "**Available Options on Site**\n"
+                "All category/fit/size combinations found in sale items:\n"
+                f"```yaml\n{yaml_content}\n```"
+            ),
+        }
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    self.webhook_url,
+                    json=payload,
+                    timeout=10.0,
+                )
+                response.raise_for_status()
+                logger.info("Sent discovered options to Discord")
+                return True
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Discord API error: {e.response.status_code} - {e.response.text}")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to send discovered options: {e}")
             return False

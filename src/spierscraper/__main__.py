@@ -24,9 +24,11 @@ def setup_logging(verbose: bool = False) -> None:
     )
 
 
-async def run_discover(config: Config) -> int:
+async def run_discover(config: Config, dry_run: bool = False) -> int:
     """Discover all available options from the site."""
     logger = logging.getLogger(__name__)
+
+    notifier = DiscordNotifier(config.discord_webhook_url or "")
 
     try:
         async with SpierMackayScraper(
@@ -40,9 +42,20 @@ async def run_discover(config: Config) -> int:
             logger.warning("No options discovered")
             return 1
 
-        # Print as YAML for easy copy-paste into config
-        print("\n# Discovered options (copy relevant sections to your config.yaml):\n")
-        print(discovered.to_yaml())
+        # Send to Discord or print to stdout
+        if dry_run:
+            logger.info("Dry run - would send discovered options to Discord:")
+            print("\n# Discovered options:\n")
+            print(discovered.to_yaml())
+        elif config.discord_webhook_url:
+            success = await notifier.send_discovered_options(discovered)
+            if not success:
+                logger.error("Failed to send discovered options to Discord")
+                return 1
+        else:
+            # No webhook configured, print to stdout
+            print("\n# Discovered options (copy relevant sections to your config.yaml):\n")
+            print(discovered.to_yaml())
 
         return 0
 
@@ -178,7 +191,7 @@ def main() -> None:
 
     # Run discovery or normal scrape
     if args.discover:
-        exit_code = asyncio.run(run_discover(config))
+        exit_code = asyncio.run(run_discover(config, args.dry_run))
     else:
         # Check for filters
         if not config.filters:
