@@ -9,7 +9,8 @@
       "WebSearch",
       "Bash(make check:*)",
       "Bash(make lint:*)",
-      "Bash(make test:*)"
+      "Bash(make test:*)",
+      "Bash(make lint-fix:*)"
     ]
   }
 }
