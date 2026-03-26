@@ -147,7 +147,8 @@ class DiscordNotifier:
         """Send discovered category/fit/size options to Discord.
 
         This sends a summary of all available options found on the site,
-        formatted as YAML for easy copying to config.
+        formatted as YAML for easy copying to config. Splits into multiple
+        messages if content exceeds Discord's 2000 char limit.
         """
         if not self.webhook_url:
             logger.warning("No Discord webhook URL configured")
@@ -157,35 +158,72 @@ class DiscordNotifier:
             logger.info("No discovered options to send")
             return True
 
-        # Format as YAML in a code block
-        yaml_content = discovered.to_yaml()
+        # Build messages, splitting by category to stay under Discord's limit
+        messages = self._build_discovered_messages(discovered)
 
-        # Discord message limit is 2000 chars, code block adds ~10 chars
-        max_content = 1900
-        if len(yaml_content) > max_content:
-            yaml_content = yaml_content[:max_content] + "\n# ... (truncated)"
+        success = True
+        async with httpx.AsyncClient() as client:
+            for payload in messages:
+                try:
+                    response = await client.post(
+                        self.webhook_url,
+                        json=payload,
+                        timeout=10.0,
+                    )
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as e:
+                    logger.error(f"Discord API error: {e.response.status_code} - {e.response.text}")
+                    success = False
+                except Exception as e:
+                    logger.error(f"Failed to send discovered options: {e}")
+                    success = False
 
-        payload = {
-            "content": (
-                "**Available Options on Site**\n"
-                "All category/fit/size combinations found in sale items:\n"
-                f"```yaml\n{yaml_content}\n```"
-            ),
-        }
+        if success:
+            logger.info(f"Sent discovered options to Discord ({len(messages)} message(s))")
+        return success
 
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    self.webhook_url,
-                    json=payload,
-                    timeout=10.0,
-                )
-                response.raise_for_status()
-                logger.info("Sent discovered options to Discord")
-                return True
-        except httpx.HTTPStatusError as e:
-            logger.error(f"Discord API error: {e.response.status_code} - {e.response.text}")
-            return False
-        except Exception as e:
-            logger.error(f"Failed to send discovered options: {e}")
-            return False
+    def _build_discovered_messages(self, discovered: DiscoveredOptions) -> list[dict[str, str]]:
+        """Build Discord messages for discovered options, splitting if needed."""
+        import yaml
+
+        messages: list[dict[str, str]] = []
+        header = (
+            "**Available Options on Site**\n"
+            "All category/fit/size combinations found in sale items:\n"
+        )
+
+        # Discord limit is 2000 chars; leave room for code block markers and header
+        max_content_per_msg = 1850
+
+        current_yaml_lines: list[str] = ["filters:"]
+        current_len = len("filters:\n")
+
+        for category, opts in sorted(discovered.filters.items()):
+            # Format this category as YAML
+            category_data = {category: {"fits": opts.fits, "sizes": opts.sizes}}
+            category_yaml = yaml.dump(category_data, default_flow_style=False)
+            # Indent to nest under 'filters:'
+            indented = "\n".join("  " + line for line in category_yaml.strip().split("\n"))
+            category_len = len(indented) + 1  # +1 for newline
+
+            # Check if adding this category would exceed the limit
+            if current_len + category_len > max_content_per_msg and len(current_yaml_lines) > 1:
+                # Flush current message
+                yaml_content = "\n".join(current_yaml_lines)
+                content = f"{header}```yaml\n{yaml_content}\n```"
+                messages.append({"content": content})
+                # Start new message (continuation doesn't need full header)
+                header = "*(continued)*\n"
+                current_yaml_lines = ["filters:"]
+                current_len = len("filters:\n")
+
+            current_yaml_lines.append(indented)
+            current_len += category_len
+
+        # Flush remaining content
+        if len(current_yaml_lines) > 1:
+            yaml_content = "\n".join(current_yaml_lines)
+            content = f"{header}```yaml\n{yaml_content}\n```"
+            messages.append({"content": content})
+
+        return messages
