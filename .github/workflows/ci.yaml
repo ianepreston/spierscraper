@@ -58,14 +58,36 @@ jobs:
       - name: Load image
         run: docker load < result
 
+      - name: Login to ghcr.io
+        if: github.event_name == 'push'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Calculate CalVer version
+        if: github.event_name == 'push'
+        id: calver
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DATE=$(date +%Y.%m.%d)
+          # Get existing tags for today from the registry
+          EXISTING=$(gh api "/users/${{ github.repository_owner }}/packages/container/spierscraper/versions" --paginate 2>/dev/null \
+            | jq -r '.[].metadata.container.tags[]' 2>/dev/null \
+            | grep "^${DATE}\." \
+            | sort -t. -k4 -n \
+            | tail -1 || true)
+          if [ -z "$EXISTING" ]; then
+            VERSION="${DATE}.1"
+          else
+            N=$(echo "$EXISTING" | cut -d. -f4)
+            VERSION="${DATE}.$((N + 1))"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Calculated version: $VERSION"
+
       - name: Tag and push
         if: github.event_name == 'push'
-        env:
-          REGISTRY: ghcr.io
-          IMAGE_NAME: ${{ github.repository }}
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           docker tag spierscraper:latest ghcr.io/${{ github.repository }}:latest
-          docker tag spierscraper:latest ghcr.io/${{ github.repository }}:${{ github.sha }}
+          docker tag spierscraper:latest ghcr.io/${{ github.repository }}:${{ steps.calver.outputs.version }}
           docker push ghcr.io/${{ github.repository }}:latest
-          docker push ghcr.io/${{ github.repository }}:${{ github.sha }}
+          docker push ghcr.io/${{ github.repository }}:${{ steps.calver.outputs.version }}
