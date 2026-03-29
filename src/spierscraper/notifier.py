@@ -83,6 +83,16 @@ class DiscordNotifier:
                     "inline": True,
                 },
                 {
+                    "name": "Fit",
+                    "value": ", ".join(sorted(set(v.fit for v in match.matching_variants))),
+                    "inline": True,
+                },
+                {
+                    "name": "Size",
+                    "value": ", ".join(sorted(set(v.size for v in match.matching_variants))),
+                    "inline": True,
+                },
+                {
                     "name": "Available Sizes",
                     "value": variants_text or "See product page",
                     "inline": False,
