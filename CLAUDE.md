@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Important: Always Run Checks
+
+**Before telling the user that a feature works or that code changes are complete, always run `make check` to verify that linting, type checking, and tests all pass.** Do not claim code is working without running the full check suite first.
+
 ## Build & Development Commands
 
 ```bash
