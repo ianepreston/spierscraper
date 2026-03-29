@@ -84,12 +84,12 @@ class DiscordNotifier:
                 },
                 {
                     "name": "Fit",
-                    "value": ", ".join(sorted(set(v.fit for v in match.matching_variants))),
+                    "value": ", ".join(sorted({v.fit for v in match.matching_variants})),
                     "inline": True,
                 },
                 {
                     "name": "Size",
-                    "value": ", ".join(sorted(set(v.size for v in match.matching_variants))),
+                    "value": ", ".join(sorted({v.size for v in match.matching_variants})),
                     "inline": True,
                 },
                 {
