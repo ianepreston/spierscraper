@@ -187,6 +187,82 @@ class TestSpierMackayScraper:
         # After 3 calls, should wrap around to first
         assert headers1["User-Agent"] == scraper._get_headers()["User-Agent"]
 
+    def test_get_headers_prefers_flaresolverr_ua(self):
+        """Once primed, the FlareSolverr UA overrides the rotating fallbacks."""
+        scraper = SpierMackayScraper()
+        scraper._flaresolverr_ua = "Mozilla/5.0 (flaresolverr) Chrome/150.0.0.0"
+
+        assert scraper._get_headers()["User-Agent"] == scraper._flaresolverr_ua
+        # Stays fixed across calls (no rotation)
+        assert scraper._get_headers()["User-Agent"] == scraper._flaresolverr_ua
+
+
+@pytest.mark.asyncio
+class TestFlareSolverrPriming:
+    """Tests for FlareSolverr session priming."""
+
+    @respx.mock
+    async def test_priming_seeds_cookies_and_ua(self):
+        """When flaresolverr_url is set, __aenter__ primes cookies + UA from it."""
+        flaresolverr_response = {
+            "status": "ok",
+            "message": "Challenge not detected!",
+            "solution": {
+                "userAgent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/150.0.0.0 Safari/537.36",
+                "cookies": [
+                    {
+                        "name": "snm_2021",
+                        "value": "abc123",
+                        "domain": ".spierandmackay.com",
+                        "path": "/",
+                    }
+                ],
+            },
+        }
+        fs_route = respx.post("http://localhost:8191/v1").mock(
+            return_value=Response(200, json=flaresolverr_response)
+        )
+
+        async with SpierMackayScraper(
+            rate_limit=0, flaresolverr_url="http://localhost:8191/v1"
+        ) as scraper:
+            assert fs_route.called
+            assert scraper._flaresolverr_ua == flaresolverr_response["solution"]["userAgent"]
+            assert scraper._get_headers()["User-Agent"] == scraper._flaresolverr_ua
+            assert scraper._client is not None
+            assert scraper._client.cookies.get("snm_2021") == "abc123"
+
+    @respx.mock
+    async def test_403_triggers_reprime_then_succeeds(self, sample_api_response: dict):
+        """A 403 mid-run re-primes via FlareSolverr and retries the request."""
+        fs_route = respx.post("http://localhost:8191/v1").mock(
+            return_value=Response(
+                200,
+                json={"status": "ok", "solution": {"userAgent": "UA", "cookies": []}},
+            )
+        )
+        # First hit 403 (blocked); after re-prime the retry succeeds. The
+        # fixture paginates (page_no=2), so a third hit serves page 2 and stops.
+        collection_route = respx.get(
+            "https://www.spierandmackay.com/Category/collection_view/sale-shirts"
+        ).mock(
+            side_effect=[
+                Response(403, text="403 Forbidden"),
+                Response(200, json=sample_api_response),
+                Response(200, json=sample_api_response),
+            ]
+        )
+
+        async with SpierMackayScraper(
+            rate_limit=0, flaresolverr_url="http://localhost:8191/v1"
+        ) as scraper:
+            products = await scraper.fetch_collection_products("sale-shirts")
+
+        # Primed once at startup + once on the 403; never fell back to HTML.
+        assert len(fs_route.calls) == 2
+        assert collection_route.call_count == 3
+        assert len(products) > 0
+
 
 @pytest.mark.asyncio
 class TestCollectionAPI:

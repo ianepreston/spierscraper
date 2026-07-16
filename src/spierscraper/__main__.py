@@ -34,6 +34,7 @@ async def run_discover(config: Config, dry_run: bool = False) -> int:
         async with SpierMackayScraper(
             base_url=config.base_url,
             rate_limit=config.rate_limit_seconds,
+            flaresolverr_url=config.flaresolverr_url,
         ) as scraper:
             logger.info("Discovering available options...")
             discovered = await scraper.discover_available_options()
@@ -82,6 +83,7 @@ async def run_scraper(config: Config, dry_run: bool = False) -> int:
             base_url=config.base_url,
             rate_limit=config.rate_limit_seconds,
             config=config,
+            flaresolverr_url=config.flaresolverr_url,
         ) as scraper:
             logger.info("Starting scrape...")
             products = await scraper.scrape_all()

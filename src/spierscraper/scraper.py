@@ -55,11 +55,16 @@ class SpierMackayScraper:
         base_url: str = "https://www.spierandmackay.com",
         rate_limit: float = 1.5,
         config: Config | None = None,
+        flaresolverr_url: str | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.rate_limit = rate_limit
         self.config = config
+        self.flaresolverr_url = flaresolverr_url
         self._ua_index = 0
+        # User-Agent captured from FlareSolverr's real browser; overrides the
+        # rotating fallbacks once priming has run.
+        self._flaresolverr_ua: str | None = None
         self._client: httpx.AsyncClient | None = None
 
     async def __aenter__(self) -> "SpierMackayScraper":
@@ -68,6 +73,8 @@ class SpierMackayScraper:
             follow_redirects=True,
             headers=self._get_headers(),
         )
+        if self.flaresolverr_url:
+            await self._prime_via_flaresolverr()
         return self
 
     async def __aexit__(self, *args: object) -> None:
@@ -75,8 +82,11 @@ class SpierMackayScraper:
             await self._client.aclose()
 
     def _get_headers(self) -> dict[str, str]:
-        ua = USER_AGENTS[self._ua_index % len(USER_AGENTS)]
-        self._ua_index += 1
+        if self._flaresolverr_ua:
+            ua = self._flaresolverr_ua
+        else:
+            ua = USER_AGENTS[self._ua_index % len(USER_AGENTS)]
+            self._ua_index += 1
         return {
             "User-Agent": ua,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -87,6 +97,54 @@ class SpierMackayScraper:
 
     async def _rate_limit_delay(self) -> None:
         await asyncio.sleep(self.rate_limit)
+
+    async def _prime_via_flaresolverr(self) -> None:
+        """Prime the session with cookies + UA from FlareSolverr's browser.
+
+        Spier & Mackay sit behind Cloudflare, which serves plain httpx clients
+        a 403 while letting a real browser through. FlareSolverr drives a
+        headless Chrome; we borrow the cookies and User-Agent it obtains and
+        replay them from our own client, so the normal GET/POST/JSON flow keeps
+        working (routing every request through FlareSolverr would wrap JSON in
+        HTML and can't do the POST stock checks).
+        """
+        if not self._client or not self.flaresolverr_url:
+            return
+
+        logger.info(f"Priming session via FlareSolverr at {self.flaresolverr_url}")
+        payload = {"cmd": "request.get", "url": self.base_url, "maxTimeout": 60000}
+        try:
+            async with httpx.AsyncClient(timeout=90.0) as fs:
+                resp = await fs.post(self.flaresolverr_url, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as e:
+            logger.error(f"FlareSolverr request failed: {e}")
+            raise
+
+        if data.get("status") != "ok":
+            raise RuntimeError(f"FlareSolverr did not solve challenge: {data.get('message')}")
+
+        solution = data.get("solution", {})
+
+        ua = solution.get("userAgent")
+        if ua:
+            self._flaresolverr_ua = ua
+            self._client.headers["User-Agent"] = ua
+
+        cookies = solution.get("cookies", []) or []
+        for c in cookies:
+            name = c.get("name")
+            if not name:
+                continue
+            self._client.cookies.set(
+                name,
+                c.get("value", ""),
+                domain=c.get("domain", ""),
+                path=c.get("path", "/"),
+            )
+
+        logger.info(f"FlareSolverr primed {len(cookies)} cookies")
 
     @retry(
         stop=stop_after_attempt(3),
@@ -99,6 +157,10 @@ class SpierMackayScraper:
 
         await self._rate_limit_delay()
         response = await self._client.get(url, **kwargs)
+        if response.status_code == 403 and self.flaresolverr_url:
+            logger.warning("Got 403; re-priming session via FlareSolverr and retrying")
+            await self._prime_via_flaresolverr()
+            response = await self._client.get(url, **kwargs)
         response.raise_for_status()
         return response
 
@@ -113,6 +175,10 @@ class SpierMackayScraper:
 
         await self._rate_limit_delay()
         response = await self._client.post(url, **kwargs)
+        if response.status_code == 403 and self.flaresolverr_url:
+            logger.warning("Got 403; re-priming session via FlareSolverr and retrying")
+            await self._prime_via_flaresolverr()
+            response = await self._client.post(url, **kwargs)
         response.raise_for_status()
         return response
 

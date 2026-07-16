@@ -34,6 +34,12 @@ class Config(BaseModel):
     # Base URL
     base_url: str = "https://www.spierandmackay.com"
 
+    # FlareSolverr endpoint (e.g. "http://localhost:8191/v1"). When set, the
+    # scraper primes its session cookies + User-Agent through FlareSolverr's
+    # headless browser to get past Cloudflare's bot check. Prefer the env var
+    # so deployments aren't hard-coded to a particular FlareSolverr address.
+    flaresolverr_url: str | None = None
+
     @classmethod
     def load(cls, config_path: Path | None = None) -> "Config":
         """Load configuration from YAML file and environment."""
@@ -62,6 +68,10 @@ class Config(BaseModel):
         env_webhook = os.environ.get("DISCORD_WEBHOOK_URL")
         if env_webhook:
             config_data["discord_webhook_url"] = env_webhook
+
+        env_flaresolverr = os.environ.get("FLARESOLVERR_URL")
+        if env_flaresolverr:
+            config_data["flaresolverr_url"] = env_flaresolverr
 
         return cls(**config_data)
 
